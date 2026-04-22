@@ -1,8 +1,8 @@
-# AwesomeNews — Native Pre-Interview Technical Assessment
+# AwesomeNews — React Native Pre-Interview Technical Assessment
 
-Submission for the **Native Pre-Interview Technical Assessment** (React Native CLI news feed). This README is written to match the brief: **setup**, **architecture and trade-offs**, **requirement traceability**, and **Section 02** answers. The code is meant to support a follow-up conversation, not only a demo.
+This repository implements the **React Native Pre-Interview Technical Assessment** brief (React Native CLI news feed, Hacker News API, two core screens + optional bonuses). The README follows the submission format: **setup**, **architecture and trade-offs**, **honest limitations**, **requirement traceability**, and **Section 02 (Q1–Q5)**. The goal is code and prose you can defend in a follow-up interview.
 
-**Ground rules (from the brief):** AI-assisted development is acceptable; what matters is that you can explain **architectural choices**, **trade-offs**, and **what you would change with more time** (see below).
+**Ground rules (from the brief):** AI-assisted development is encouraged; the interview focuses on **why** you made decisions, not syntax recall. Be ready to walk through any file and discuss trade-offs.
 
 ---
 
@@ -10,11 +10,11 @@ Submission for the **Native Pre-Interview Technical Assessment** (React Native C
 
 | Requirement | How it is satisfied |
 | ------------- | ------------------- |
-| **React Native CLI (not Expo)** | Bare RN project (`react-native` CLI). No Expo SDK or `expo-*` runtime dependencies. Tab icons are small `View`-drawn glyphs (`src/navigation/tabBarIcons.tsx`) so we do not pull in Expo’s font/asset pipeline. |
-| **TypeScript throughout; no unexplained `any`** | App and tests are `.ts` / `.tsx`; ESLint `@typescript-eslint` preset. No `any` / `as any` in source or tests. |
-| **Target Android API 30+ & iOS 14+** | **Android:** `compileSdkVersion` / `targetSdkVersion` **36** (Play “target API” / modern platform behavior). **`minSdkVersion` 24** (RN default) so the app installs on common dev hardware (e.g. API 29); raising **`minSdk` to 30** is a one-line change in `android/build.gradle` if the product owner requires API 30 as the *minimum device* floor. **iOS:** Xcode deployment target from the RN template (**15.1**), which is **≥ 14**. |
-| **React Navigation v6+** | `@react-navigation/native` **v7**, native stack + bottom tabs (v6+ family). |
-| **Redux Toolkit or Zustand** | **Zustand** + `persist` for bookmarks; rationale below. |
+| **React Native CLI (not Expo)** | Bare RN project (`react-native` CLI). No Expo SDK or `expo-*` dependencies. |
+| **TypeScript throughout; avoid `any` unless justified** | All app and test code is `.ts` / `.tsx`. No `any` / `as any` in source or tests; ESLint uses the React Native TypeScript preset. |
+| **Target Android API 30+ & iOS 14+** | **Android:** `compileSdkVersion` / `targetSdkVersion` **36** (satisfies “target API 30+” in the Play / platform sense). **`minSdkVersion` 24** matches the current RN template so the APK installs on common emulators; set `minSdkVersion = 30` in `android/build.gradle` if you need API 30 as the *minimum device* floor. **iOS:** Deployment target from the RN template (**15.1**), which is **≥ 14**. |
+| **React Navigation v6+** | `@react-navigation/native` **v7** with native stack and bottom tabs (v6+ line). |
+| **Redux Toolkit or Zustand (justify in README)** | **Zustand** for feed + bookmarks; **Zustand `persist` + AsyncStorage** for bookmark durability. Rationale is under [Architecture & state](#architecture--state) and **Section 02 Q4**. |
 
 ---
 
@@ -53,19 +53,19 @@ npm run lint    # ESLint
 
 | Brief | Implementation |
 | ----- | -------------- |
-| `FlatList`: title, domain, score, relative time | `ArticleRow.tsx` + `parseDomain.ts` + `formatRelativeTime.ts` |
-| Pull-to-refresh | `RefreshControl` |
-| Skeleton **or** `ActivityIndicator` on first load | `FeedSkeleton` + overlay spinner when `status` is initial loading |
-| Empty + error UI | Empty copy when `success` + no rows; full-screen error + Retry when `error` |
+| `FlatList`: title, **source domain** (from URL), **score**, **relative time** | `ArticleRow.tsx`: `sourceDomainFromUrl` / `faviconUrlForDomain` in `model/domainFromUrl.ts`, Google `s2/favicons` with **“HN”** placeholder on failure, `formatRelativeTime` for list time |
+| Pull-to-refresh | `RefreshControl` on the feed `FlatList` |
+| Skeleton **or** `ActivityIndicator` on first load | **`FeedSkeleton` only** on first load (`stories.length === 0` + loading); pull-to-refresh still uses the native refresh indicator |
+| Empty + error UI | Empty copy when `success` + no rows; full-screen error + **Try again** when `status === 'error'` |
 | Tap → Screen 2 | `navigation.navigate('ArticleDetail', { story })` |
-| Sort by score (default) or time; survives back | `useFeedStore` `sortBy`; header `FeedHeaderSort` → `SortToggle` |
-| Favicon or placeholder | Google `s2/favicons` URL; on error / no domain → “HN” placeholder |
+| Sort by score (default) or time; survives back | `useFeedStore.sortBy` (Zustand); `FeedHeaderSort` → `SortToggle` |
+| Favicon or placeholder | Per brief: `https://www.google.com/s2/favicons?domain={domain}&sz=64`; **“HN”** tile if load fails or domain is empty |
 
 **Screen 2 — Detail (`ArticleDetailScreen.tsx`, `ArticleDetailHeaderActions.tsx`):**
 
 | Brief | Implementation |
 | ----- | -------------- |
-| Title, author, score, time, URL tappable | `Linking.canOpenURL` / `openURL` on URL row |
+| Title, author, score, time, URL tappable | **Open in browser** uses `Linking.canOpenURL` / `openURL`; metadata block shows fields |
 | Share in header | `Share` API in header actions |
 | Bookmark toggle; **cold restart** persistence | `useBookmarkStore` + Zustand `persist` + **AsyncStorage** (see rationale below) |
 | Back restores **list scroll** | `useFeedStore.listScrollOffset` + `useFocusEffect` on feed (`FeedScreen.tsx`) |
@@ -79,13 +79,34 @@ npm run lint    # ESLint
 | Debounced search, no extra API | `useDebouncedValue` + filter in-memory titles |
 | Offline banner | `useNetworkBanner` + `OfflineBanner` |
 
-**Performance (rubric):** `FlatList` uses **`keyExtractor`**, **`getItemLayout`**, tuned windowing, and **`React.memo`** on `ArticleRow`.
+**Performance (rubric):** `FlatList` uses **`keyExtractor`**, **`getItemLayout`** (fixed row height from `LIST_ROW_HEIGHT`), list windowing props, and **`React.memo`** on `ArticleRow`.
+
+---
+
+## Official submission checklist (from the brief)
+
+| Item | Status |
+| ---- | ------ |
+| Runs on **Android** and **iOS** with standard setup (`npm install`, `pod install`) | Yes — see AsyncStorage Maven note under [Setup & run](#setup--run) |
+| **TypeScript** throughout; no unexplained **`any`** | Yes |
+| Hacker News **API** (20 IDs, `Promise.all`, `story` + `url` filter) | Yes — `hnApi.ts` + `storyUtils.filterValidStories` |
+| Pull-to-refresh + **loading / error / empty** | Yes |
+| **Bookmark** persistence after **cold restart** | Yes — Zustand `persist` + AsyncStorage |
+| **Scroll position** restored after back from detail | Yes — `listScrollOffset` in feed store + `useFocusEffect` |
+| README: setup, architecture, **trade-offs** | Yes |
+| README: **Section 02** Q1–Q5 | Yes |
+| **Unit test** (business logic) + **RNTL** interaction test | Yes — see [Tests](#tests-assessment-minimum) |
+| **Bonus:** Bookmarks tab + swipe remove | Yes |
+| **Bonus:** Debounced search (no extra API) | Yes |
+| **Bonus:** Offline banner | Yes |
+| **Bonus:** E2E (Detox / Maestro) | Not implemented (called out under trade-offs) |
 
 ---
 
 ## Architecture & state
 
 - **Feature-based layout:** `src/features/news/` (api, model, components, screens), `src/navigation/`, `src/store/`, `src/shared/`.
+- **Icons:** Header actions, tabs, and search use **`react-native-vector-icons` (Ionicons)** with `fonts.gradle` on Android; ensure **`Ionicons.ttf`** is bundled per RNVI setup so icons do not fall back to wrong glyphs.
 - **No prop-drilling:** Screens use Zustand + navigation params; rows get `story` + `onPress` only.
 - **Zustand (vs Redux Toolkit):** Chosen for small surface area (feed + bookmarks), minimal boilerplate, and selector-friendly updates. **Redux Toolkit + RTK Query** would be the pivot if the app grew many endpoints, normalized caches, and shared patterns with a Redux web app. This is spelled out for **Section 02 Q4** as well.
 - **AsyncStorage (vs MMKV) for bookmarks:** Good enough for small JSON, trivial Jest mock, no extra native surface. **MMKV** if we needed sync reads at high frequency or much larger payloads.
@@ -133,30 +154,9 @@ Treat **local state as the source of truth** for first paint: render from cache,
 
 | Brief | File |
 | ----- | ---- |
-| One **business-logic** Jest test | `__tests__/storyUtils.test.ts` (`sortStories`, `filterValidStories`) |
-| One **component interaction** RNTL test | `__tests__/SortToggle.test.tsx` (press tabs → `onChange`) |
+| **Business-logic** Jest tests | `__tests__/storyUtils.test.ts` (`sortStories`, `filterValidStories`); `__tests__/domainFromUrl.test.ts` (`sourceDomainFromUrl`, `faviconUrlForDomain`) |
+| **Component interaction** RNTL test | `__tests__/SortToggle.test.tsx` (press Score / Time → `onChange`) |
 
 ```bash
 npm test
 ```
-
----
-
-## Submission checklist (from the brief)
-
-| Item | Status |
-| ---- | ------ |
-| App runs on **Android** and **iOS** without undocumented manual steps (standard `npm install` / `pod install`) | Yes — see Android AsyncStorage note above |
-| **TypeScript** throughout; no unexplained **`any`** | Yes |
-| API uses provided **Hacker News** endpoints | Yes |
-| Pull-to-refresh; **loading / error / empty** | Yes |
-| Bookmark persistence survives **cold restart** | Yes |
-| List **scroll position** restored after back | Yes |
-| README: setup, architecture, **trade-offs** | Yes |
-| README: **Section 02** Q1–Q5 | Yes |
-| Jest: **business-logic** unit test | Yes |
-| Jest: **RNTL** interaction test | Yes |
-| **Bonus:** Bookmarks tab + swipe remove | Yes |
-| **Bonus:** Debounced search (no extra API) | Yes |
-| **Bonus:** Offline banner | Yes |
-| **Bonus:** E2E (Detox / Maestro) | Not implemented (time trade-off; noted above) |
